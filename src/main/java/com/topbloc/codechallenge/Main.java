@@ -21,8 +21,62 @@ public class Main {
             return "OK";
         });
 
-        //TODO: Add your routes here. a couple of examples are below
+        // Routes for the Inventory and Items
+
+        // All Items Route
         get("/items", (req, res) -> DatabaseManager.getItems());
+        // Example Version Route
         get("/version", (req, res) -> "TopBloc Code Challenge v1.0");
+        // All Inventory Route
+        get("/inventory", (req, res) -> DatabaseManager.getInventory());
+        // No Stock Route
+        get("/nostock", (req, res) -> DatabaseManager.getInventoryEmpty());
+        // Overstock Route
+        get("/overstock", (req, res) -> DatabaseManager.getInventoryOverStock());
+        // Low Stock Route
+        get("/lowstock", (req, res) -> DatabaseManager.getInventoryLowStock());
+        // Dynamic Route Using ID. Example cURL: "curl http://localhost:4567/inventory/id" 
+        get("/inventory/:id", (req, res) -> {
+            int id = Integer.parseInt(req.params(":id"));
+            return DatabaseManager.getInventoryDyanmic(id);
+        });
+
+        // Routes for the Distributors
+
+        // All Distributors Route
+        get("/distributors", (req, res) -> DatabaseManager.getDistributors());
+
+        // Dynamic Distributor Route Using ID. Example cURL: "curl http://localhost:4567/distributors/id"
+        get("/distributor/:id", (req, res) -> {
+            int id = Integer.parseInt(req.params(":id"));
+            return DatabaseManager.getDistributorDyanmic(id);
+        });
+
+        // Dynamic item route showing all distributor options of given item.
+        // Example cURL: "curl http://localhost:4567/item/id"
+        get("/item/:id", (req, res) -> {
+            int id = Integer.parseInt(req.params(":id"));
+            return DatabaseManager.getItemDynamic(id);
+        });
+
+        // Explore any table given table name (CSV format)
+        // Example cURL: "curl http://localhost:4567/"table name""
+        get("/", (req, res) -> {
+            int id = Integer.parseInt(req.params(":table"));
+            return DatabaseManager.getItemDynamic(id);
+        });
+
+
+        // POST/PUT/DELETE routes
+        post("/items", (req, res) -> { /* add new item */ });
+        post("/inventory", (req, res) -> { /* add to inventory */ });
+        put("/inventory/:id", (req, res) -> { /* modify inventory */ });
+        post("/distributors", (req, res) -> { /* add distributor */ });
+        post("/distributor/:id/items", (req, res) -> { /* add item to distributor */ });
+        put("/distributor/:id/item/:itemId", (req, res) -> { /* modify price */ });
+        get("/cheapest/:id/:quantity", (req, res) -> { /* find cheapest */ });
+        delete("/inventory/:id", (req, res) -> { /* delete from inventory */ });
+        delete("/distributor/:id", (req, res) -> { /* delete distributor */ });
+
     }
 }
