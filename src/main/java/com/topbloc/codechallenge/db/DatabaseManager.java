@@ -138,6 +138,71 @@ public class DatabaseManager {
         return obj;
     }
 
+    // Export table to CSV format
+    // Example usage: curl "http://localhost:4567/export/csv?table=items" > items.csv
+    public static String exportTableToCsv(String tableName) {
+        StringBuilder csv = new StringBuilder();
+        
+        try {
+            // Validate table name
+            if (!isValidTableName(tableName)) {
+                return "Error: Invalid table name";
+            }
+            
+            // Query to get all data from the table
+            String sql = "SELECT * FROM " + tableName;
+            ResultSet rs = conn.createStatement().executeQuery(sql);
+            ResultSetMetaData metaData = rs.getMetaData();
+            int columnCount = metaData.getColumnCount();
+            
+            // Add column headers
+            for (int i = 1; i <= columnCount; i++) {
+                csv.append(metaData.getColumnName(i));
+                if (i < columnCount) {
+                    csv.append(",");
+                }
+            }
+            csv.append("\n");
+            
+            // Add data rows
+            while (rs.next()) {
+                for (int i = 1; i <= columnCount; i++) {
+                    String value = rs.getString(i);
+                    // Escape quotes and handle nulls
+                    if (value == null) {
+                        value = "";
+                    } else if (value.contains("\"") || value.contains(",") || value.contains("\n")) {
+                        value = "\"" + value.replace("\"", "\"\"") + "\"";
+                    }
+                    csv.append(value);
+                    if (i < columnCount) {
+                        csv.append(",");
+                    }
+                }
+                csv.append("\n");
+            }
+            
+            return csv.toString();
+        } catch (SQLException e) {
+            System.out.println("Error exporting table to CSV: " + e.getMessage());
+            return "Error: " + e.getMessage();
+        }
+    }
+    
+    // Helper fn to validate table name preventing SQL injection
+    private static boolean isValidTableName(String tableName) {
+        try {
+            String sql = "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            stmt.setString(1, tableName);
+            ResultSet rs = stmt.executeQuery();
+            return rs.next(); // If there's a result, the table exists
+        } catch (SQLException e) {
+            System.out.println("Error validating table name: " + e.getMessage());
+            return false;
+        }
+    }
+
     // Controller functions - add your routes here. getItems is provided as an example
 
     // Inventory Routes
@@ -275,4 +340,292 @@ public class DatabaseManager {
         }
     }
 
+    // Add Item to items table and inventory table
+    public static boolean addItemAndInventory(String name, int stock, int capacity) {
+        try {
+            // Check if item already exists
+            String checkSql = "SELECT COUNT(*) FROM items WHERE name = ?";
+            PreparedStatement checkStmt = conn.prepareStatement(checkSql);
+            checkStmt.setString(1, name);
+            ResultSet checkRs = checkStmt.executeQuery();
+            if (checkRs.next() && checkRs.getInt(1) > 0) {
+                return false; 
+            }
+            
+            // Get the next available ID
+            String maxIdSql = "SELECT MAX(id) as max_id FROM items";
+            ResultSet rs = conn.createStatement().executeQuery(maxIdSql);
+            int nextId = rs.next() ? rs.getInt("max_id") + 1 : 1;
+            
+            // Insert item with explicit ID
+            String itemSql = "INSERT INTO items (id, name) VALUES (?, ?)";
+            PreparedStatement itemStmt = conn.prepareStatement(itemSql);
+            itemStmt.setInt(1, nextId);
+            itemStmt.setString(2, name);
+            itemStmt.executeUpdate();
+            
+            // Insert inventory with same ID
+            String invSql = "INSERT INTO inventory (id, item, stock, capacity) VALUES (?, ?, ?, ?)";
+            PreparedStatement invStmt = conn.prepareStatement(invSql);
+            invStmt.setInt(1, nextId);
+            invStmt.setInt(2, nextId);
+            invStmt.setInt(3, stock);
+            invStmt.setInt(4, capacity);
+            invStmt.executeUpdate();
+            
+            return true;
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean modifyInventory(int id, int stock, int capacity) {
+        try {
+            // Check if inventory item exists
+            String checkSql = "SELECT COUNT(*) FROM inventory WHERE id = ?";
+            PreparedStatement checkStmt = conn.prepareStatement(checkSql);
+            checkStmt.setInt(1, id);
+            ResultSet checkRs = checkStmt.executeQuery();
+            if (checkRs.next() && checkRs.getInt(1) < 1) {
+                return false; // Inventory item doesn't exist
+            }
+            
+            // Update inventory with new stock and capacity
+            String invSql = "UPDATE inventory SET stock = ?, capacity = ? WHERE id = ?";
+            PreparedStatement invStmt = conn.prepareStatement(invSql);
+            invStmt.setInt(1, stock);
+            invStmt.setInt(2, capacity);
+            invStmt.setInt(3, id);
+            invStmt.executeUpdate();
+            
+            return true;
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean addDistributors(String name) {
+        try {
+            // Check if distributor already exists
+            String checkSql = "SELECT COUNT(*) FROM distributors WHERE name = ?";
+            PreparedStatement checkStmt = conn.prepareStatement(checkSql);
+            checkStmt.setString(1, name);
+            ResultSet checkRs = checkStmt.executeQuery();
+            if (checkRs.next() && checkRs.getInt(1) > 0) {
+                return false; 
+            }
+            
+            // Get the next available ID for the distributor
+            String maxIdSql = "SELECT MAX(id) as max_id FROM distributors";
+            ResultSet rs = conn.createStatement().executeQuery(maxIdSql);
+            int nextId = rs.next() ? rs.getInt("max_id") + 1 : 1;
+            
+            // Insert distributor with explicit ID
+            String itemSql = "INSERT INTO distributors (id, name) VALUES (?, ?)";
+            PreparedStatement itemStmt = conn.prepareStatement(itemSql);
+            itemStmt.setInt(1, nextId);
+            itemStmt.setString(2, name);
+            itemStmt.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean addDistributorItem(String distName, String itemName, double cost) {
+        try {
+            // Check if distributor exists
+            String checkSql = "SELECT COUNT(*) FROM distributors WHERE name = ?";
+            PreparedStatement checkStmt = conn.prepareStatement(checkSql);
+            checkStmt.setString(1, distName);
+            ResultSet checkRs = checkStmt.executeQuery();
+            if (checkRs.next() && checkRs.getInt(1) < 1) {
+                return false; 
+            }
+            
+            // Get the next available ID for the item
+            String maxIdSql = "SELECT MAX(id) as max_id FROM distributor_prices";
+            ResultSet rs = conn.createStatement().executeQuery(maxIdSql);
+            int nextId = rs.next() ? rs.getInt("max_id") + 1 : 1;
+
+            // Get distributor ID from name
+            String distIdSql = "SELECT id FROM distributors WHERE name = ?";
+            PreparedStatement distIdStmt = conn.prepareStatement(distIdSql);
+            distIdStmt.setString(1, distName);
+            ResultSet distIdRs = distIdStmt.executeQuery();
+            if (!distIdRs.next()) {
+                return false; 
+            }
+            int distId = distIdRs.getInt("id");
+
+            // Get item ID from name
+            String itemIdSql = "SELECT id FROM items WHERE name = ?";
+            PreparedStatement itemIdStmt = conn.prepareStatement(itemIdSql);
+            itemIdStmt.setString(1, itemName);
+            ResultSet itemIdRs = itemIdStmt.executeQuery();
+            if (!itemIdRs.next()) {
+                return false; // Item not found
+            }
+            int itemId = itemIdRs.getInt("id");
+
+            // Insert into distributor_prices with explicit ID
+            String priceSql = "INSERT INTO distributor_prices (id, distributor, item, cost) VALUES (?, ?, ?, ?)";
+            PreparedStatement priceStmt = conn.prepareStatement(priceSql);
+            priceStmt.setInt(1, nextId);
+            priceStmt.setInt(2, distId);
+            priceStmt.setInt(3, itemId);
+            priceStmt.setDouble(4, cost);
+            priceStmt.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+            return false;
+        }
+    }
+
+    // Modify distributor catalog
+    public static boolean modifyDistributorPrice(String distName, String itemName, double cost) {
+        try {
+            // Check if distributor item exists
+            String checkSql = "SELECT COUNT(*) FROM distributor_prices WHERE distributor = ? AND item = ?";
+            PreparedStatement checkStmt = conn.prepareStatement(checkSql);
+
+            // Get distributor ID from name
+            String distIdSql = "SELECT id FROM distributors WHERE name = ?";
+            PreparedStatement distIdStmt = conn.prepareStatement(distIdSql);
+            distIdStmt.setString(1, distName);
+            ResultSet distIdRs = distIdStmt.executeQuery();
+            if (!distIdRs.next()) {
+                return false; 
+            }
+            int distId = distIdRs.getInt("id");
+
+            // Get item ID from name
+            String itemIdSql = "SELECT id FROM items WHERE name = ?";
+            PreparedStatement itemIdStmt = conn.prepareStatement(itemIdSql);
+            itemIdStmt.setString(1, itemName);
+            ResultSet itemIdRs = itemIdStmt.executeQuery();
+            if (!itemIdRs.next()) {
+                return false; // Item not found
+            }
+            int itemId = itemIdRs.getInt("id");
+
+            // Check if this distributor has this item
+            checkStmt.setInt(1, distId);
+            checkStmt.setInt(2, itemId);
+            ResultSet checkRs = checkStmt.executeQuery();
+            if (!checkRs.next() || checkRs.getInt(1) == 0) {
+                return false; // Distributor item doesn't exist
+            }
+            
+            // Update distributor price with new cost
+            String updateSql = "UPDATE distributor_prices SET cost = ? WHERE distributor = ? AND item = ?";
+            PreparedStatement updateStmt = conn.prepareStatement(updateSql);
+            updateStmt.setDouble(1, cost);
+            updateStmt.setInt(2, distId);
+            updateStmt.setInt(3, itemId);
+            updateStmt.executeUpdate();
+            
+            return true;
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+            return false;
+        }
+    }
+
+    public static JSONObject getCheapestRestock(String itemName, int quantity) {
+        try {
+            // Get item ID from name
+            String itemIdSql = "SELECT id FROM items WHERE name = ?";
+            PreparedStatement itemIdStmt = conn.prepareStatement(itemIdSql);
+            itemIdStmt.setString(1, itemName);
+            ResultSet itemIdRs = itemIdStmt.executeQuery();
+            if (!itemIdRs.next()) {
+                return null; // Item not found
+            }
+            int itemId = itemIdRs.getInt("id");
+            
+            // Find cheapest distributor for this item
+            String cheapestSql = 
+                "SELECT d.name as distributor_name, dp.cost, (dp.cost * ?) as total_cost " +
+                "FROM distributor_prices dp " +
+                "JOIN distributors d ON dp.distributor = d.id " +
+                "WHERE dp.item = ? " +
+                "ORDER BY dp.cost ASC " +
+                "LIMIT 1";
+            
+            PreparedStatement cheapestStmt = conn.prepareStatement(cheapestSql);
+            cheapestStmt.setInt(1, quantity);
+            cheapestStmt.setInt(2, itemId);
+            ResultSet cheapestRs = cheapestStmt.executeQuery();
+            
+            if (!cheapestRs.next()) {
+                return null; // No distributors found for this item
+            }
+            
+            JSONObject result = new JSONObject();
+            result.put("item", itemName);
+            result.put("quantity", quantity);
+            result.put("distributor", cheapestRs.getString("distributor_name"));
+            result.put("unit_cost", cheapestRs.getDouble("cost"));
+            result.put("total_cost", cheapestRs.getDouble("total_cost"));
+            
+            return result;
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+            return null;
+        }
+    }
+
+    public static boolean deleteInventoryItemByName(String name) {
+        try {
+            // Get item ID from name
+            String itemIdSql = "SELECT id FROM items WHERE name = ?";
+            PreparedStatement itemIdStmt = conn.prepareStatement(itemIdSql);
+            itemIdStmt.setString(1, name);
+            ResultSet itemIdRs = itemIdStmt.executeQuery();
+            if (!itemIdRs.next()) {
+                return false; // Item not found
+            }
+            int itemId = itemIdRs.getInt("id");
+            
+            // Delete the inventory item
+            String deleteSql = "DELETE FROM inventory WHERE item = ?";
+            PreparedStatement deleteStmt = conn.prepareStatement(deleteSql);
+            deleteStmt.setInt(1, itemId);
+            int rowsAffected = deleteStmt.executeUpdate();
+            
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+            return false;
+        }
+    }
+    
+    public static boolean deleteDistributor(int id) {
+        try {
+            // Check if distributor exists
+            String checkSql = "SELECT COUNT(*) FROM distributors WHERE id = ?";
+            PreparedStatement checkStmt = conn.prepareStatement(checkSql);
+            checkStmt.setInt(1, id);
+            ResultSet checkRs = checkStmt.executeQuery();
+            if (!checkRs.next() || checkRs.getInt(1) == 0) {
+                return false; // Distributor doesn't exist
+            }
+            
+            // Delete the distributor
+            String deleteSql = "DELETE FROM distributors WHERE id = ?";
+            PreparedStatement deleteStmt = conn.prepareStatement(deleteSql);
+            deleteStmt.setInt(1, id);
+            int rowsAffected = deleteStmt.executeUpdate();
+            
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+            return false;
+        }
+    }
 }
